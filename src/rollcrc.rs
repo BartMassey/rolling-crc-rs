@@ -251,7 +251,7 @@ fn test_rolling_crc_table() {
         // windows of buffer.
         for i in winsize..winsize+test_size {
             // Get a slice containing the current window.
-            let window = &buffer[i-winsize..i];
+            let window = &buffer[i-winsize+1..=i];
             // Directly calculate the target hash.
             let crc1 = calc_crc(window, &crc_table);
             // If in the standard case, make sure the target
@@ -260,15 +260,15 @@ fn test_rolling_crc_table() {
                 let crcx = crc::crc32::checksum_ieee(window);
                 assert_eq!(crc1, crcx);
             }
+            // Roll the hash.
+            crc2 = update_crc(crc2, &crc_table, buffer[i])
+                ^ rolling_crc_table[buffer[i - winsize] as usize];
             // Ensure that the closed rolling hash agrees
             // with the target hash.
             if crc1 != finish_crc(crc2) {
                 panic!("{:08x} != {:08x} ({} {})",
                        crc1, crc2, winsize, i);
             }
-            // Roll the hash.
-            crc2 = update_crc(crc2, &crc_table, buffer[i])
-                ^ rolling_crc_table[buffer[i - winsize] as usize];
         }
     }
 }
