@@ -142,7 +142,7 @@ impl<'a> RollingCRC<'a> {
     ///     if i == 0 {
     ///         assert_eq!(crc, None);
     ///     } else {
-    ///         assert_eq!(crc, Some(context.crc(&bytes[i-2..i])));
+    ///         assert_eq!(crc, Some(context.crc(&bytes[i-1..=i])));
     ///     }
     /// }
     /// ```
