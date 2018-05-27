@@ -205,6 +205,15 @@ impl<'a> RollingCRC<'a> {
     {
         RollingCRCMap{ rolling_crc: self, bytes }
     }
+
+    /// A version of `iter` that preserves errors in its
+    /// input byte results.
+    pub fn iter_result<T, E>(self, bytes: T) ->
+        RollingCRCMapResult<'a, T, E>
+        where T: Iterator<Item=Result<u8, E>>
+    {
+        RollingCRCMapResult{ rolling_crc: self, bytes }
+    }
 }
 
 /// An iterator that maps the stream of input bytes from the
@@ -232,6 +241,39 @@ impl<'a, T> Iterator for RollingCRCMap<'a, T>
             if let Some(crc) = crc {
                 let index = self.rolling_crc.count - 1;
                 return Some((index, crc));
+            }
+        }
+    }
+}
+
+/// An iterator that maps the stream of input byte results
+/// from the given byte iterator to a stream of position
+/// results relative to the start of a given `RollingCRC`
+/// and their corresponding rolling CRCs. This iterator can
+/// be created using `RollingCRC::iter_result()`.
+pub struct RollingCRCMapResult<'a, T, E>
+    where T: Iterator<Item=Result<u8, E>>
+{
+    rolling_crc: RollingCRC<'a>,
+    bytes: T,
+}
+
+impl<'a, T, E> Iterator for RollingCRCMapResult<'a, T, E>
+    where T: Iterator<Item=Result<u8, E>>
+{
+    type Item = Result<(usize, u32), E>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let byte = self.bytes.next()?;
+            let byte = match byte {
+                Ok(byte) => byte,
+                Err(e) => return Some(Err(e)),
+            };
+            let crc = self.rolling_crc.push(byte);
+            if let Some(crc) = crc {
+                let index = self.rolling_crc.count - 1;
+                return Some(Ok((index, crc)));
             }
         }
     }
