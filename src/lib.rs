@@ -63,17 +63,33 @@ impl<'a> RollingCRCContext<'a> {
 
     /// Make a new rolling CRC context for this window size.
     /// The first call will incur the overhead of CRC table
-    /// calculation. Subsequent calls will incur the overhead
-    /// of rolling CRC table calculation.
+    /// calculation. Subsequent calls will incur the
+    /// overhead of rolling CRC table calculation.
     pub fn new(window_size: usize) -> Self {
         let crc_table = &CRC_TABLE;
         let mut rolling_crc_table = [0; 256];
-        make_rolling_crc_table(
-            window_size,
-            &crc_table,
-            &mut rolling_crc_table,
-            );
+        if window_size >= 1 {
+            make_rolling_crc_table(
+                window_size,
+                &crc_table,
+                &mut rolling_crc_table,
+                );
+        }
         Self { window_size, crc_table, rolling_crc_table }
+    }
+
+    /// Compute the CRC of the given bytes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use rolling_crc::*;
+    /// let context = RollingCRCContext::new(0);
+    /// let bytes = "hello world".as_bytes();
+    /// assert_eq!(context.crc(bytes), 0x0d4a1185);
+    /// ```
+    pub fn crc(&self, bytes: &[u8]) -> u32 {
+        calc_crc(bytes, &self.crc_table)
     }
 
 }
@@ -97,7 +113,9 @@ pub struct RollingCRC<'a> {
 
 impl<'a> RollingCRC<'a> {
 
-    /// Start a new rolling CRC in the given context.
+    /// Start a new rolling CRC in the given context. If the
+    /// window size of `context` is 0, this structure
+    /// will never return a rolling CRC.
     pub fn new(context: &'a RollingCRCContext<'a>) -> Self {
         Self {
             context,
@@ -111,16 +129,36 @@ impl<'a> RollingCRC<'a> {
     /// Roll a byte through this rolling CRC. This is likely
     /// to be pretty expensive per-byte, but it can be
     /// convenient.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use rolling_crc::*;
+    /// let context = RollingCRCContext::new(2);
+    /// let mut roll_crc = RollingCRC::new(&context);
+    /// let bytes = "hello world".as_bytes();
+    /// for i in 0..bytes.len() {
+    ///     let crc = roll_crc.push(bytes[i]);
+    ///     if i == 0 {
+    ///         assert_eq!(crc, None);
+    ///     } else {
+    ///         assert_eq!(crc, Some(context.crc(&bytes[i-2..i])));
+    ///     }
+    /// }
+    /// ```
     #[inline(always)]
-    pub fn roll_byte(&mut self, byte: u8) -> Option<u32> {
+    pub fn push(&mut self, byte: u8) -> Option<u32> {
         self.count += 1;
+        if self.context.window_size == 0 {
+            return None;
+        }
         if self.count < self.context.window_size {
             self.bytes.push(byte);
             return None;
         }
         if self.count == self.context.window_size {
             self.bytes.push(byte);
-            let crc = calc_crc(&self.bytes, &self.context.crc_table);
+            let crc = self.context.crc(&self.bytes);
             self.last_crc = Some(finish_crc(crc));
             return Some(crc);
         }
@@ -134,7 +172,7 @@ impl<'a> RollingCRC<'a> {
         if self.index >= self.context.window_size {
             self.index = 0;
         }
-        self.last_crc=Some(finish_crc(crc));
-        Some(crc)
+        self.last_crc=Some(crc);
+        Some(finish_crc(crc))
     }
 }
