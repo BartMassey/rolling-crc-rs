@@ -260,16 +260,12 @@ fn test_rolling_crc_table() {
                 let crcx = crc::crc32::checksum_ieee(window);
                 assert_eq!(crc1, crcx);
             }
-            // Close the rolling hash.
-            crc2 = finish_crc(crc2);
             // Ensure that the closed rolling hash agrees
             // with the target hash.
-            if crc1 != crc2 {
+            if crc1 != finish_crc(crc2) {
                 panic!("{:08x} != {:08x} ({} {})",
                        crc1, crc2, winsize, i);
             }
-            // Reopen the rolling hash.
-            crc2 = finish_crc(crc2);
             // Roll the hash.
             crc2 = update_crc(crc2, &crc_table, buffer[i])
                 ^ rolling_crc_table[buffer[i - winsize] as usize];
