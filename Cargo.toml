@@ -8,8 +8,11 @@ name = "simhashr"
 version = "0.1.0"
 authors = ["Bart Massey <bart@cs.pdx.edu>"]
 
+[dependencies]
+lazy_static = "1.0"
+
 [dev-dependencies]
-crc = "*"
+crc = "1.8"
 
 [lib]
 name = "simhashr"

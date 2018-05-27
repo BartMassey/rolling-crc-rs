@@ -18,3 +18,123 @@
 
 mod rollcrc;
 pub use rollcrc::*;
+
+#[macro_use]
+extern crate lazy_static;
+
+use std::fmt;
+
+// Build the CRC table just once at first use.  It is not
+// clear to me where the performance penalty for referencing
+// this lives.
+lazy_static! {
+    static ref CRC_TABLE: CRCTable = {
+        let mut crc_table = [0;256];
+        make_crc_table(&mut crc_table, POLY_CRC);
+        crc_table
+    };
+}
+
+/// Data needed for rolling CRC calculation.
+#[derive(Clone)]
+pub struct RollingCRCContext<'a> {
+    /// Size of calculation window.
+    window_size: usize,
+    /// CRC table.
+    crc_table: &'a CRCTable,
+    /// Rolling CRC table for this window size.
+    rolling_crc_table: CRCTable,
+}
+
+impl<'a> fmt::Debug for RollingCRCContext<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "RollingCRCContext {{ \
+                   window_size: {}",
+               self.window_size)?;
+        write!(f, ", crc_table: ")?;
+        self.crc_table[..].fmt(f)?;
+        write!(f, ", rolling_crc_table: ")?;
+        self.rolling_crc_table[..].fmt(f)?;
+        write!(f, " }}")
+    }
+}
+
+impl<'a> RollingCRCContext<'a> {
+
+    /// Make a new rolling CRC context for this window size.
+    /// The first call will incur the overhead of CRC table
+    /// calculation. Subsequent calls will incur the overhead
+    /// of rolling CRC table calculation.
+    pub fn new(window_size: usize) -> Self {
+        let crc_table = &CRC_TABLE;
+        let mut rolling_crc_table = [0; 256];
+        make_rolling_crc_table(
+            window_size,
+            &crc_table,
+            &mut rolling_crc_table,
+            );
+        Self { window_size, crc_table, rolling_crc_table }
+    }
+
+}
+
+/// An in-progress rolling CRC.
+#[derive(Debug, Clone)]
+pub struct RollingCRC<'a> {
+    /// Needed context information.
+    context: &'a RollingCRCContext<'a>,
+    /// Number of bytes processed so far.
+    count: usize,
+    /// Bytes in window.
+    bytes: Vec<u8>,
+    /// Index of next byte in window to be replaced. We
+    /// implement our own circular queue, to avoid the
+    /// overhead of calls to the standard one.
+    index: usize,
+    /// Last "open" rolling CRC, to continue rolling.
+    last_crc: Option<u32>,
+}
+
+impl<'a> RollingCRC<'a> {
+
+    /// Start a new rolling CRC in the given context.
+    pub fn new(context: &'a RollingCRCContext<'a>) -> Self {
+        Self {
+            context,
+            count: 0,
+            bytes: Vec::new(),
+            index: 0,
+            last_crc: None,
+        }
+    }
+
+    /// Roll a byte through this rolling CRC. This is likely
+    /// to be pretty expensive per-byte, but it can be
+    /// convenient.
+    #[inline(always)]
+    pub fn roll_byte(&mut self, byte: u8) -> Option<u32> {
+        self.count += 1;
+        if self.count < self.context.window_size {
+            self.bytes.push(byte);
+            return None;
+        }
+        if self.count == self.context.window_size {
+            self.bytes.push(byte);
+            let crc = calc_crc(&self.bytes, &self.context.crc_table);
+            self.last_crc = Some(finish_crc(crc));
+            return Some(crc);
+        }
+        assert!(self.context.window_size == self.bytes.len());
+        let roll_out = self.bytes[self.index] as usize;
+        let last_crc = self.last_crc.expect("internal error: lost CRC");
+        let table = self.context.rolling_crc_table;
+        let crc = update_crc(last_crc, &table, byte) ^ table[roll_out];
+        self.bytes[self.index] = byte;
+        self.index += 1;
+        if self.index >= self.context.window_size {
+            self.index = 0;
+        }
+        self.last_crc=Some(finish_crc(crc));
+        Some(crc)
+    }
+}
