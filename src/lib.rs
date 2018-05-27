@@ -176,4 +176,63 @@ impl<'a> RollingCRC<'a> {
         self.last_crc=Some(crc);
         Some(finish_crc(crc))
     }
+
+    /// An iterator over the bytes from the given byte
+    /// iterator, returning successive rolling CRCs
+    /// resulting from operating on the given state.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use rolling_crc::*;
+    /// // Set up the byte source.
+    /// let s = "hello world";
+    /// let ns = s.len();
+    /// // Set up the collection context.
+    /// let context = RollingCRCContext::new(5);
+    /// let rolling_crc = RollingCRC::new(&context);
+    /// // Collect the rolling CRCs.
+    /// let mut crcs: Vec<(usize, u32)> =
+    ///     rolling_crc.iter(s.bytes()).collect();
+    /// // Check the result.
+    /// assert_eq!(ns - 4, crcs.len());
+    /// let bytes = s.as_bytes();
+    /// let crc = context.crc(&bytes[ns-5..ns]);
+    /// assert_eq!(Some((ns - 1, crc)), crcs.pop());
+    /// ```
+    pub fn iter<T>(self, bytes: T) -> RollingCRCMap<'a, T>
+        where T: Iterator<Item=u8>
+    {
+        RollingCRCMap{ rolling_crc: self, bytes }
+    }
+}
+
+/// An iterator that maps the stream of input bytes from the
+/// given byte iterator to a stream of positions relative to
+/// the start of a given `RollingCRC` and their
+/// corresponding rolling CRCs. This iterator can be created
+/// using `RollingCRC::iter()`.
+#[derive(Debug, Clone)]
+pub struct RollingCRCMap<'a, T>
+    where T: Iterator<Item=u8>
+{
+    rolling_crc: RollingCRC<'a>,
+    bytes: T,
+}
+
+impl<'a, T> Iterator for RollingCRCMap<'a, T>
+    where T: Iterator<Item=u8>
+{
+    type Item = (usize, u32);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let byte = self.bytes.next()?;
+            let crc = self.rolling_crc.push(byte);
+            if let Some(crc) = crc {
+                let index = self.rolling_crc.count - 1;
+                return Some((index, crc));
+            }
+        }
+    }
 }
