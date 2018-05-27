@@ -165,8 +165,9 @@ impl<'a> RollingCRC<'a> {
         assert!(self.context.window_size == self.bytes.len());
         let roll_out = self.bytes[self.index] as usize;
         let last_crc = self.last_crc.expect("internal error: lost CRC");
-        let table = self.context.rolling_crc_table;
-        let crc = update_crc(last_crc, &table, byte) ^ table[roll_out];
+        let table = self.context.crc_table;
+        let rolling_table = self.context.rolling_crc_table;
+        let crc = update_crc(last_crc, &table, byte) ^ rolling_table[roll_out];
         self.bytes[self.index] = byte;
         self.index += 1;
         if self.index >= self.context.window_size {
