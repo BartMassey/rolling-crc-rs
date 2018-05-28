@@ -10,8 +10,7 @@
 extern crate rolling_crc;
 use rolling_crc::*;
 
-use std::io;
-use std::io::Read;
+use std::io::{self, Read};
 
 fn main() -> Result<(), io::Error> {
     let mut args = std::env::args();
