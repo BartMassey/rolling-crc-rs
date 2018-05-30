@@ -25,11 +25,13 @@ fn main() -> Result<(), io::Error> {
         Some(target) => target,
     };
     let context = RollingCRCContext::new(target.len());
+    let rcrc = RollingCRC::new(&context);
     let target_crc = context.crc(target.as_bytes());
     for filename in args {
         let f = std::fs::File::open(&filename)?;
         let bytes = io::BufReader::new(f).bytes();
-        let iter = RollingCRC::new(&context).iter_result(bytes);
+        let rcrc = rcrc.clone();
+        let iter = rcrc.iter_result(bytes);
         for result in iter {
             let (index, crc) = result?;
             if crc == target_crc {
