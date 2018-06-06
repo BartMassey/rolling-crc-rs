@@ -7,13 +7,16 @@
 //! This is essentially Aho-Corasick with CRC hashing.
 //! It is not expected to be especially fast.
 
+extern crate filebuffer;
 extern crate rolling_crc;
+
 use rolling_crc::*;
 
 use std::io::{self, Read};
 
 fn main() -> Result<(), io::Error> {
-    let mut args = std::env::args();
+    // Set up.
+    let mut args = std::env::args().peekable();
     let _ = args.next();
     let target = match args.next() {
         None =>
@@ -27,12 +30,26 @@ fn main() -> Result<(), io::Error> {
     let context = RollingCRCContext::new(target.len());
     let rcrc = RollingCRC::new(&context);
     let target_crc = context.crc(target.as_bytes());
+
+    // Read from stdin.
+    if args.peek() == None {
+        let stdin = io::stdin();
+        let bytes = io::BufReader::new(stdin).bytes();
+        for result in rcrc.iter_result(bytes) {
+            let (index, crc) = result?;
+            if crc == target_crc {
+                println!("{}", index);
+            }
+        }
+        return Ok(());
+    }
+
+    // Read from files.
     for filename in args {
-        let f = std::fs::File::open(&filename)?;
-        let bytes = io::BufReader::new(f).bytes();
+        let f = filebuffer::FileBuffer::open(&filename)?;
+        f.prefetch(0, f.len());
         let rcrc = rcrc.clone();
-        let iter = rcrc.iter_result(bytes);
-        for result in iter {
+        for result in rcrc.iter_result(f.bytes()) {
             let (index, crc) = result?;
             if crc == target_crc {
                 println!("{}: {}", filename, index);
