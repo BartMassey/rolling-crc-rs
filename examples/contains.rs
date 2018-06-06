@@ -10,10 +10,12 @@
 extern crate rolling_crc;
 use rolling_crc::*;
 
-use std::io::{self, Read};
+use std::fs::File;
+use std::io::{self, stdin, BufReader, Read};
 
 fn main() -> Result<(), io::Error> {
-    let mut args = std::env::args();
+    // Set up.
+    let mut args = std::env::args().peekable();
     let _ = args.next();
     let target = match args.next() {
         None =>
@@ -25,14 +27,26 @@ fn main() -> Result<(), io::Error> {
         Some(target) => target,
     };
     let context = RollingCRCContext::new(target.len());
-    let rcrc = RollingCRC::new(&context);
     let target_crc = context.crc(target.as_bytes());
+    let rcrc = RollingCRC::new(&context);
+
+    // Filter mode.
+    if args.peek() == None {
+        let r = BufReader::new(stdin());
+        for result in rcrc.iter_result(r.bytes()) {
+            let (index, crc) = result?;
+            if crc == target_crc {
+                println!("{}", index);
+            }
+        }
+        return Ok(());
+    }
+
+    // File mode.
     for filename in args {
-        let f = std::fs::File::open(&filename)?;
-        let bytes = io::BufReader::new(f).bytes();
+        let r = BufReader::new(File::open(&filename)?);
         let rcrc = rcrc.clone();
-        let iter = rcrc.iter_result(bytes);
-        for result in iter {
+        for result in rcrc.iter_result(r.bytes()) {
             let (index, crc) = result?;
             if crc == target_crc {
                 println!("{}: {}", filename, index);
