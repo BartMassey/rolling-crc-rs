@@ -198,7 +198,7 @@ impl<'a> RollingCRC<'a> {
     /// assert_eq!(ns - 4, crcs.len());
     /// let bytes = s.as_bytes();
     /// let crc = context.crc(&bytes[ns-5..ns]);
-    /// assert_eq!(Some((ns - 1, crc)), crcs.pop());
+    /// assert_eq!(Some((ns - 5, crc)), crcs.pop());
     /// ```
     pub fn iter<T>(self, bytes: T) -> RollingCRCMap<'a, T>
         where T: Iterator<Item=u8>
@@ -235,13 +235,32 @@ impl<'a, T> Iterator for RollingCRCMap<'a, T>
     type Item = (usize, u32);
 
     fn next(&mut self) -> Option<Self::Item> {
+        let window_size = self.rolling_crc.context.window_size;
         loop {
             let byte = self.bytes.next()?;
             let crc = self.rolling_crc.push(byte);
             if let Some(crc) = crc {
-                let index = self.rolling_crc.count - 1;
+                let index = self.rolling_crc.count - window_size;
                 return Some((index, crc));
             }
+        }
+    }
+}
+
+#[test]
+fn test_iterator_index() {
+    // Set up the byte source.
+    let s = b"llllollllollll";
+    // Set up the collection context.
+    let context = RollingCRCContext::new(4);
+    let target = context.crc(b"llll");
+    let rolling_crc = RollingCRC::new(&context);
+    // Collect the rolling CRCs.
+    for (index, crc) in rolling_crc.iter(s.into_iter().cloned()) {
+        if index == 0 || index == 5 || index == 10 {
+            assert_eq!(crc, target);
+        } else {
+            assert!(crc != target);
         }
     }
 }
@@ -264,6 +283,7 @@ impl<'a, T, E> Iterator for RollingCRCMapResult<'a, T, E>
     type Item = Result<(usize, u32), E>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        let window_size = self.rolling_crc.context.window_size;
         loop {
             let byte = self.bytes.next()?;
             let byte = match byte {
@@ -272,7 +292,7 @@ impl<'a, T, E> Iterator for RollingCRCMapResult<'a, T, E>
             };
             let crc = self.rolling_crc.push(byte);
             if let Some(crc) = crc {
-                let index = self.rolling_crc.count - 1;
+                let index = self.rolling_crc.count - window_size;
                 return Some(Ok((index, crc)));
             }
         }
