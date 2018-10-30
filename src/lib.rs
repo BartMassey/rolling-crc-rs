@@ -17,7 +17,7 @@
 //! <http://github.com/BartMassey/rolling-crc>.
 
 mod rollcrc;
-pub use rollcrc::*;
+pub use self::rollcrc::*;
 
 #[macro_use]
 extern crate lazy_static;
